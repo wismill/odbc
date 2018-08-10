@@ -8,10 +8,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <sql.h>
-#include <sqlext.h>
-#include <sqltypes.h>
-#include <odbcss.h>
 
 #define FALSE 0
 #define TRUE 1
@@ -24,14 +20,14 @@
 typedef struct EnvAndDbc {
   SQLHENV *env;
   SQLHDBC *dbc;
-  char *error;
+  wchar_t *error;
 } EnvAndDbc;
 
-char *odbc_error(EnvAndDbc *envAndDbc){
+wchar_t *odbc_error(EnvAndDbc *envAndDbc){
   return envAndDbc->error;
 }
 
-void odbc_ProcessLogMessages(EnvAndDbc *envAndDbc, SQLSMALLINT plm_handle_type, SQLHANDLE plm_handle, char *logstring, int ConnInd);
+void odbc_ProcessLogMessagesW(EnvAndDbc *envAndDbc, SQLSMALLINT plm_handle_type, SQLHANDLE plm_handle, wchar_t *logstring, int ConnInd);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Alloc/dealloc env
@@ -119,9 +115,9 @@ void odbc_FreeEnvAndDbc(EnvAndDbc *envAndDbc){
 ////////////////////////////////////////////////////////////////////////////////
 // Connect/disconnect
 
-RETCODE odbc_SQLDriverConnect(EnvAndDbc *envAndDbc, SQLCHAR *connString, SQLSMALLINT len){
+RETCODE odbc_SQLDriverConnectW(EnvAndDbc *envAndDbc, SQLWCHAR *connString, SQLSMALLINT len){
   SQLSMALLINT ignored = 0;
-  RETCODE r = SQLDriverConnect(
+  RETCODE r = SQLDriverConnectW(
     *(envAndDbc->dbc),
     NULL,
     connString,
@@ -131,7 +127,7 @@ RETCODE odbc_SQLDriverConnect(EnvAndDbc *envAndDbc, SQLCHAR *connString, SQLSMAL
     &ignored,
     SQL_DRIVER_NOPROMPT);
   if (r == SQL_ERROR)
-    odbc_ProcessLogMessages(envAndDbc, SQL_HANDLE_DBC, *(envAndDbc->dbc), "odbc_SQLDriverConnect", FALSE);
+    odbc_ProcessLogMessagesW(envAndDbc, SQL_HANDLE_DBC, *(envAndDbc->dbc), L"odbc_SQLDriverConnectW", FALSE);
   return r;
 }
 
@@ -166,7 +162,7 @@ void odbc_SQLFreeStmt(SQLHSTMT *hstmt){
 
 RETCODE odbc_SQLExecDirectW(EnvAndDbc *envAndDbc, SQLHSTMT *hstmt, SQLWCHAR *stmt, SQLINTEGER len){
   RETCODE r = SQLExecDirectW(*hstmt, stmt, len);
-  if (r == SQL_ERROR) odbc_ProcessLogMessages(envAndDbc, SQL_HANDLE_STMT, *hstmt, "odbc_SQLExecDirectW", FALSE);
+  if (r == SQL_ERROR) odbc_ProcessLogMessagesW(envAndDbc, SQL_HANDLE_STMT, *hstmt, L"odbc_SQLExecDirectW", FALSE);
   return r;
 }
 
@@ -175,13 +171,13 @@ RETCODE odbc_SQLExecDirectW(EnvAndDbc *envAndDbc, SQLHSTMT *hstmt, SQLWCHAR *stm
 
 RETCODE odbc_SQLFetch(EnvAndDbc *envAndDbc, SQLHSTMT *hstmt){
   RETCODE r = SQLFetch(*hstmt);
-  if (r == SQL_ERROR) odbc_ProcessLogMessages(envAndDbc, SQL_HANDLE_STMT, *hstmt, "odbc_SQLFetch", FALSE);
+  if (r == SQL_ERROR) odbc_ProcessLogMessagesW(envAndDbc, SQL_HANDLE_STMT, *hstmt, L"odbc_SQLFetch", FALSE);
   return r;
 }
 
 RETCODE odbc_SQLMoreResults(EnvAndDbc *envAndDbc, SQLHSTMT *hstmt){
   RETCODE r = SQLMoreResults(*hstmt);
-  if (r == SQL_ERROR) odbc_ProcessLogMessages(envAndDbc, SQL_HANDLE_STMT, *hstmt, "odbc_SQLMoreResults", FALSE);
+  if (r == SQL_ERROR) odbc_ProcessLogMessagesW(envAndDbc, SQL_HANDLE_STMT, *hstmt, L"odbc_SQLMoreResults", FALSE);
   return r;
 }
 
@@ -196,7 +192,7 @@ RETCODE odbc_SQLGetData(EnvAndDbc *envAndDbc,
                         SQLLEN         bufferLen,
                         SQLLEN *       resultLen){
   RETCODE r = SQLGetData(*hstmt, col, targetType, buffer, bufferLen, resultLen);
-  if (r == SQL_ERROR) odbc_ProcessLogMessages(envAndDbc, SQL_HANDLE_STMT, *hstmt, "odbc_SQLGetData", FALSE);
+  if (r == SQL_ERROR) odbc_ProcessLogMessagesW(envAndDbc, SQL_HANDLE_STMT, *hstmt, L"odbc_SQLGetData", FALSE);
   return r;
 }
 
@@ -232,30 +228,30 @@ RETCODE odbc_SQLNumResultCols(SQLHSTMT *hstmt, SQLSMALLINT *cols){
 ////////////////////////////////////////////////////////////////////////////////
 // Logs
 
-void odbc_ProcessLogMessages(EnvAndDbc *envAndDbc, SQLSMALLINT plm_handle_type, SQLHANDLE plm_handle, char *logstring, int ConnInd) {
+void odbc_ProcessLogMessagesW(EnvAndDbc *envAndDbc, SQLSMALLINT plm_handle_type, SQLHANDLE plm_handle, wchar_t *logstring, int ConnInd) {
   RETCODE plm_retcode = SQL_SUCCESS;
-  UCHAR plm_szSqlState[MAXBUFLEN] = "";
-  SDWORD plm_pfNativeError = 0L;
-  SWORD plm_pcbErrorMsg = 0;
   SQLSMALLINT plm_cRecNmbr = 1;
+  SQLWCHAR plm_szSqlState[MAXBUFLEN] = L"";
+  SQLINTEGER plm_pfNativeError = 0L;
+  SQLSMALLINT plm_pcbErrorMsg = 0;
 
   // Temporary buffer for each message
-  char *msg[MAXBUFLEN];
+  wchar_t *msg[MAXBUFLEN];
 
   // Reset the error buffer
   free(envAndDbc->error);
   envAndDbc->error = NULL;
-  unsigned long errors_strlen = 0;
+  size_t errors_strlen = 0;
 
   while (plm_retcode != SQL_NO_DATA_FOUND) {
-    plm_retcode = SQLGetDiagRec(plm_handle_type, plm_handle, plm_cRecNmbr,
-                                plm_szSqlState, &plm_pfNativeError, (SQLCHAR *)msg,
+    plm_retcode = SQLGetDiagRecW(plm_handle_type, plm_handle, plm_cRecNmbr,
+                                plm_szSqlState, &plm_pfNativeError, (SQLWCHAR *)msg,
                                 MAXBUFLEN - 1, &plm_pcbErrorMsg);
-    unsigned long msg_strlen = strlen((const char*)msg);
+    size_t msg_strlen = wcslen((const wchar_t*)msg);
     // If there is something to copy, copy it onto the error buffer.
     if (msg_strlen > 0) {
-      envAndDbc->error = realloc(envAndDbc->error, errors_strlen + msg_strlen + 1);
-      strncpy(envAndDbc->error + errors_strlen, (const char*) msg, msg_strlen);
+      envAndDbc->error = realloc(envAndDbc->error, (errors_strlen + msg_strlen + 1) * sizeof(wchar_t));
+      wcsncpy(envAndDbc->error + errors_strlen, (const wchar_t*) msg, msg_strlen);
       errors_strlen += msg_strlen;
     }
     plm_cRecNmbr++;

@@ -177,17 +177,17 @@ connect string =
                 fmap (ptr, ) (newForeignPtr odbc_FreeEnvAndDbc (coerce ptr)))
              -- Above: Allocate the environment.
              -- Below: Try to connect to the database.
-        withCStringLen
+        withCWStringLen
           (T.unpack string)
           (\(wstring,len) ->
              uninterruptibleMask_
                (do assertSuccess
                      ptr
-                     "odbc_SQLDriverConnect"
+                     "odbc_SQLDriverConnectW"
                      (withForeignPtr
                         envAndDbc
                         (\dbcPtr ->
-                           odbc_SQLDriverConnect
+                           odbc_SQLDriverConnectW
                              dbcPtr
                              (coerce wstring)
                              (fromIntegral len)))
@@ -809,7 +809,7 @@ assertSuccess dbc label m = do
       string <-
         if nullPtr == ptr
           then pure ""
-          else peekCString ptr
+          else peekCWString ptr
       throwIO (UnsuccessfulReturnCode label (coerce retcode) string)
 
 -- | Check that the RETCODE is successful or no data.
@@ -824,7 +824,7 @@ assertSuccessOrNoData dbc label m = do
       string <-
         if nullPtr == ptr
           then pure ""
-          else peekCString ptr
+          else peekCWString ptr
       throwIO (UnsuccessfulReturnCode label (coerce retcode) string)
 
 --------------------------------------------------------------------------------
@@ -892,7 +892,7 @@ data TIMESTAMP_STRUCT
 -- Foreign functions
 
 foreign import ccall "odbc odbc_error"
-  odbc_error :: Ptr EnvAndDbc -> IO (Ptr CChar)
+  odbc_error :: Ptr EnvAndDbc -> IO (Ptr CWchar)
 
 foreign import ccall "odbc odbc_AllocEnvAndDbc"
   odbc_AllocEnvAndDbc :: IO (Ptr EnvAndDbc)
@@ -900,8 +900,8 @@ foreign import ccall "odbc odbc_AllocEnvAndDbc"
 foreign import ccall "odbc &odbc_FreeEnvAndDbc"
   odbc_FreeEnvAndDbc :: FunPtr (Ptr EnvAndDbc -> IO ())
 
-foreign import ccall "odbc odbc_SQLDriverConnect"
-  odbc_SQLDriverConnect :: Ptr EnvAndDbc -> Ptr SQLCHAR -> SQLSMALLINT -> IO RETCODE
+foreign import ccall "odbc odbc_SQLDriverConnectW"
+  odbc_SQLDriverConnectW :: Ptr EnvAndDbc -> Ptr SQLWCHAR -> SQLSMALLINT -> IO RETCODE
 
 foreign import ccall "odbc &odbc_SQLDisconnect"
   odbc_SQLDisconnect :: FunPtr (Ptr EnvAndDbc -> IO ())
